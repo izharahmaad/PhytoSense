@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+*.egg-info/
+
+# Model artifacts
+*.pt
+*.pth
+*.onnx
+backend/models/*.pt
+
+# Node / Expo
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

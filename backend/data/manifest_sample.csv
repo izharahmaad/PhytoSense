@@ -1,0 +1,6 @@
+image_path,temperature,humidity,light_intensity,soil_moisture,health_score,stress_label,cause_labels
+sample_images/leaf_001.jpg,28.5,55,42000,35,0.85,healthy,
+sample_images/leaf_002.jpg,34.0,30,60000,15,0.42,moderate_stress,water_deficit;heat_stress
+sample_images/leaf_003.jpg,22.0,70,25000,60,0.90,healthy,
+sample_images/leaf_004.jpg,31.0,40,55000,20,0.35,severe_stress,water_deficit
+sample_images/leaf_005.jpg,26.0,65,38000,50,0.65,mild_stress,nutrient_deficiency

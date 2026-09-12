@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "PhytoSense",
+    "slug": "phytosense",
+    "version": "0.6.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1b4332"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": {
+      "package": "com.gulzaralam.phytosense",
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+    }
+  }
+}
