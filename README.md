@@ -158,3 +158,85 @@ PhytoSense
 └─ README.md
 
 ```
+```
+PhytoSense
+├─ backend
+│  ├─ .pytest_cache
+│  │  ├─ CACHEDIR.TAG
+│  │  ├─ README.md
+│  │  └─ v
+│  │     └─ cache
+│  │        └─ nodeids
+│  ├─ app
+│  │  ├─ api
+│  │  │  ├─ routes.py
+│  │  │  └─ __init__.py
+│  │  ├─ config.py
+│  │  ├─ db
+│  │  │  ├─ crud.py
+│  │  │  ├─ database.py
+│  │  │  ├─ models.py
+│  │  │  └─ __init__.py
+│  │  ├─ main.py
+│  │  ├─ ml
+│  │  │  ├─ dataset.py
+│  │  │  ├─ env_encoder.py
+│  │  │  ├─ explain.py
+│  │  │  ├─ fusion_model.py
+│  │  │  ├─ inference.py
+│  │  │  ├─ train.py
+│  │  │  ├─ vision_model.py
+│  │  │  └─ __init__.py
+│  │  ├─ schemas
+│  │  │  ├─ prediction.py
+│  │  │  └─ __init__.py
+│  │  └─ __init__.py
+│  ├─ data
+│  │  ├─ manifests
+│  │  ├─ manifest_sample.csv
+│  │  ├─ plantvillage
+│  │  ├─ processed
+│  │  │  └─ small_plantvillage
+│  │  │     └─ Apple___healthy
+│  │  └─ sample_images
+│  │     └─ test_leaf.jpg
+│  ├─ download_small_dataset.py
+│  ├─ models
+│  │  └─ README.md
+│  ├─ phytosense.db
+│  ├─ requirements.txt
+│  └─ tests
+│     ├─ test_api.py
+│     ├─ test_ml.py
+│     ├─ test_prediction_api.py
+│     └─ __init__.py
+├─ docs
+│  ├─ architecture.md
+│  ├─ methodology.md
+│  └─ roadmap.md
+├─ LICENSE
+├─ mobile
+│  ├─ app.json
+│  ├─ App.tsx
+│  ├─ assets
+│  │  └─ icon.png
+│  ├─ package.json
+│  ├─ src
+│  │  ├─ components
+│  │  │  ├─ HealthScoreCard.tsx
+│  │  │  └─ StressBadge.tsx
+│  │  ├─ navigation
+│  │  │  └─ AppNavigator.tsx
+│  │  ├─ screens
+│  │  │  ├─ CaptureScreen.tsx
+│  │  │  ├─ HistoryScreen.tsx
+│  │  │  ├─ HomeScreen.tsx
+│  │  │  └─ ResultScreen.tsx
+│  │  └─ services
+│  │     └─ api.ts
+│  └─ tsconfig.json
+├─ notebooks
+│  └─ 01_eda_placeholder.ipynb
+└─ README.md
+
+```
