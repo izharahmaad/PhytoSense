@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
 from typing import Dict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PredictionResponse(BaseModel):
@@ -22,5 +23,4 @@ class PredictionHistoryItem(BaseModel):
     stress_level: str
     recommendation: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
