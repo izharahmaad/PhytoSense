@@ -26,3 +26,6 @@ web-build/
 *.db
 *.sqlite
 *.log
+# Generated datasets and training output
+backend/data/processed/
+backend/runs/
