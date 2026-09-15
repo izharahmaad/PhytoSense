@@ -1,24 +1,28 @@
-# Local Python environment
-backend/venv/
-
-# Python and test caches
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
 .pytest_cache/
 
-# Local database
-backend/phytosense.db
-
-# Downloaded and generated datasets
-backend/data/plantvillage/
-backend/data/processed/
-
-# Training outputs and experiment logs
-backend/models/*.pt
-backend/runs/
-
 # Environment files
-backend/.env
+.env
+.env.*
+!.env.example
 
-# Temporary downloader
-backend/download_small_dataset.py
+# Model artifacts
+*.pt
+*.pth
+*.bin
+
+# Expo and JavaScript
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# Databases and logs
+*.db
+*.sqlite
+*.log
