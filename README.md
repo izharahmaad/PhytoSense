@@ -240,3 +240,90 @@ PhytoSense
 └─ README.md
 
 ```
+```
+PhytoSense
+├─ backend
+│  ├─ app
+│  │  ├─ api
+│  │  │  ├─ routes.py
+│  │  │  ├─ routes.py.bak
+│  │  │  └─ __init__.py
+│  │  ├─ config.py
+│  │  ├─ db
+│  │  │  ├─ crud.py
+│  │  │  ├─ database.py
+│  │  │  ├─ models.py
+│  │  │  └─ __init__.py
+│  │  ├─ main.py
+│  │  ├─ ml
+│  │  │  ├─ dataset.py
+│  │  │  ├─ env_encoder.py
+│  │  │  ├─ explain.py
+│  │  │  ├─ fusion_model.py
+│  │  │  ├─ inference.py
+│  │  │  ├─ inference.py.bak
+│  │  │  ├─ metrics.py
+│  │  │  ├─ train.py
+│  │  │  ├─ vision_model.py
+│  │  │  └─ __init__.py
+│  │  ├─ schemas
+│  │  │  ├─ prediction.py
+│  │  │  └─ __init__.py
+│  │  └─ __init__.py
+│  ├─ create_dev_manifest.py
+│  ├─ data
+│  │  ├─ manifests
+│  │  │  └─ dev_manifest.csv
+│  │  ├─ manifest_sample.csv
+│  │  └─ sample_images
+│  │     └─ test_leaf.jpg
+│  ├─ models
+│  │  └─ README.md
+│  ├─ pytest.ini
+│  ├─ requirements.txt
+│  └─ tests
+│     ├─ test_api.py
+│     ├─ test_checkpoint_inference.py
+│     ├─ test_metrics.py
+│     ├─ test_ml.py
+│     ├─ test_prediction_api.py
+│     └─ __init__.py
+├─ docs
+│  ├─ architecture.md
+│  ├─ methodology.md
+│  └─ roadmap.md
+├─ LICENSE
+├─ mobile
+│  ├─ .env
+│  ├─ .expo
+│  │  ├─ dev
+│  │  │  └─ logs
+│  │  │     └─ start.log
+│  │  ├─ devices.json
+│  │  ├─ README.md
+│  │  └─ settings.json
+│  ├─ app.json
+│  ├─ App.tsx
+│  ├─ assets
+│  │  └─ icon.png
+│  ├─ package-lock.json
+│  ├─ package.json
+│  ├─ src
+│  │  ├─ components
+│  │  │  ├─ HealthScoreCard.tsx
+│  │  │  └─ StressBadge.tsx
+│  │  ├─ navigation
+│  │  │  └─ AppNavigator.tsx
+│  │  ├─ screens
+│  │  │  ├─ CaptureScreen.tsx
+│  │  │  ├─ HistoryScreen.tsx
+│  │  │  ├─ HomeScreen.tsx
+│  │  │  └─ ResultScreen.tsx
+│  │  └─ services
+│  │     └─ api.ts
+│  └─ tsconfig.json
+├─ notebooks
+│  └─ 01_eda_placeholder.ipynb
+└─ README.md
+
+```

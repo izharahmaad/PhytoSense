@@ -1,10 +1,11 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.ml.inference import run_inference
-from app.db.database import get_db
 from app.db import crud
+from app.db.database import get_db
+from app.ml.inference import run_inference
 from app.schemas.prediction import PredictionResponse
+
 
 router = APIRouter()
 
@@ -18,42 +19,90 @@ async def predict(
     soil_moisture: float = Form(...),
     db: Session = Depends(get_db),
 ):
-    if image.content_type not in ("image/jpeg", "image/png", "image/jpg"):
-        raise HTTPException(status_code=400, detail="Only JPEG/PNG images are supported.")
+    allowed_types = {"image/jpeg", "image/jpg", "image/png"}
+
+    if image.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPEG and PNG images are supported.",
+        )
 
     image_bytes = await image.read()
-    result = run_inference(image_bytes, temperature, humidity, light_intensity, soil_moisture)
 
-    crud.create_prediction(db, {
-        "temperature": temperature,
-        "humidity": humidity,
-        "light_intensity": light_intensity,
-        "soil_moisture": soil_moisture,
-        "health_score": result["health_score"],
-        "stress_level": result["stress_level"],
-        "cause_probabilities": result["cause_probabilities"],
-        "recommendation": result["recommendation"],
-    })
+    if not image_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded image is empty.",
+        )
+
+    max_bytes = 10 * 1024 * 1024
+    if len(image_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail="The image must be smaller than 10 MB.",
+        )
+
+    try:
+        result = run_inference(
+            image_bytes=image_bytes,
+            temperature=temperature,
+            humidity=humidity,
+            light_intensity=light_intensity,
+            soil_moisture=soil_moisture,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    crud.create_prediction(
+        db,
+        {
+            "temperature": temperature,
+            "humidity": humidity,
+            "light_intensity": light_intensity,
+            "soil_moisture": soil_moisture,
+            "health_score": result["health_score"],
+            "stress_level": result["stress_level"],
+            "cause_probabilities": result["cause_probabilities"],
+            "recommendation": result["recommendation"],
+        },
+    )
 
     return result
 
 
 @router.get("/history")
-def history(limit: int = 50, db: Session = Depends(get_db)):
+def history(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    limit = max(1, min(limit, 100))
     records = crud.list_predictions(db, limit=limit)
+
     return [
         {
-            "id": r.id,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "temperature": r.temperature,
-            "humidity": r.humidity,
-            "light_intensity": r.light_intensity,
-            "soil_moisture": r.soil_moisture,
-            "health_score": r.health_score,
-            "stress_level": r.stress_level,
-            "recommendation": r.recommendation,
+            "id": record.id,
+            "created_at": (
+                record.created_at.isoformat()
+                if record.created_at
+                else None
+            ),
+            "temperature": record.temperature,
+            "humidity": record.humidity,
+            "light_intensity": record.light_intensity,
+            "soil_moisture": record.soil_moisture,
+            "health_score": record.health_score,
+            "stress_level": record.stress_level,
+            "recommendation": record.recommendation,
         }
-        for r in records
+        for record in records
     ]
 
 

@@ -6,14 +6,33 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#1b4332"
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1b4332"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow PhytoSense to access your photos.",
+          "cameraPermission": "Allow PhytoSense to access your camera."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true
     },
-    "assetBundlePatterns": ["**/*"],
-    "ios": { "supportsTablet": true },
     "android": {
       "package": "com.gulzaralam.phytosense",
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
     }
   }
 }
