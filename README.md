@@ -14,13 +14,13 @@ causes more reliably than image-only classification?
 
 ## Architecture
 ```
-        Plant Image                Environment
+        Plant Image                  Environment
              |                     (Temp, Humidity,
-             v                      Light, Soil Moisture)
-    +-----------------+                    |
-    | CNN / ViT        |                   v
+             v                     Light, Soil Moisture)
+    +------------------+                    |
+    | CNN / ViT        |                    v
     | Feature Extractor|          +-------------------+
-    +--------+---------+          | Environment MLP  |
+    +--------+---------+          | Environment MLP   |
              |                    |    Encoder        |
              v                    +---------+---------+
       Visual Embedding                      |
@@ -33,7 +33,7 @@ causes more reliably than image-only classification?
                   +----------+----------+
                              |
         +--------------------+--------------------+
-        v                    v                     v
+        v                    v                    v
   Health Score         Stress Level          Cause Analysis
   (regression)        (classification)     (multi-label)
         |
