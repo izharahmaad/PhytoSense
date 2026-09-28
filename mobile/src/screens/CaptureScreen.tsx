@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,7 +16,7 @@ import * as ImagePicker from "expo-image-picker";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import type { RootStackParamList } from "../navigation/AppNavigator";
-import { predictPlantHealth } from "../services/api";
+import { predictPlant } from "../services/api";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Capture">;
 
@@ -25,8 +27,20 @@ type EnvironmentValues = {
   soilMoisture: number;
 };
 
-function getBackendErrorMessage(error: any): string {
-  const detail = error?.response?.data?.detail;
+type BackendError = {
+  response?: {
+    status?: number;
+    data?: {
+      detail?: unknown;
+    };
+  };
+  request?: unknown;
+  message?: string;
+};
+
+function getBackendErrorMessage(error: unknown): string {
+  const candidate = error as BackendError;
+  const detail = candidate.response?.data?.detail;
 
   if (typeof detail === "string") {
     return detail;
@@ -34,22 +48,106 @@ function getBackendErrorMessage(error: any): string {
 
   if (Array.isArray(detail)) {
     return detail
-      .map((item) => item?.msg ?? "Invalid request")
+      .map((item) => {
+        if (
+          typeof item === "object" &&
+          item !== null &&
+          "msg" in item
+        ) {
+          return String(
+            (item as { msg?: unknown }).msg ?? "Invalid request",
+          );
+        }
+
+        return "Invalid request";
+      })
       .join("\n");
   }
 
-  if (error?.response?.status) {
-    return `The server returned HTTP ${error.response.status}.`;
+  if (candidate.response?.status) {
+    return `The server returned HTTP ${candidate.response.status}.`;
   }
 
-  if (error?.request) {
+  if (candidate.request) {
     return (
-      "The backend could not be reached. Make sure the backend is running " +
+      "The backend could not be reached. Make sure it is running " +
       "and your phone is connected to the same Wi-Fi network."
     );
   }
 
+  if (candidate.message) {
+    return candidate.message;
+  }
+
   return "Something went wrong while analyzing the image.";
+}
+
+function validateEnvironment(
+  temperatureText: string,
+  humidityText: string,
+  lightIntensityText: string,
+  soilMoistureText: string,
+): EnvironmentValues | null {
+  const values: EnvironmentValues = {
+    temperature: Number.parseFloat(
+      temperatureText.replace(",", "."),
+    ),
+    humidity: Number.parseFloat(
+      humidityText.replace(",", "."),
+    ),
+    lightIntensity: Number.parseFloat(
+      lightIntensityText.replace(",", "."),
+    ),
+    soilMoisture: Number.parseFloat(
+      soilMoistureText.replace(",", "."),
+    ),
+  };
+
+  const hasInvalidNumber = Object.values(values).some(
+    (value) => !Number.isFinite(value),
+  );
+
+  if (hasInvalidNumber) {
+    Alert.alert(
+      "Invalid environment values",
+      "Enter a valid number in every environment field.",
+    );
+    return null;
+  }
+
+  if (values.temperature < -50 || values.temperature > 70) {
+    Alert.alert(
+      "Invalid temperature",
+      "Temperature must be between -50°C and 70°C.",
+    );
+    return null;
+  }
+
+  if (values.humidity < 0 || values.humidity > 100) {
+    Alert.alert(
+      "Invalid humidity",
+      "Humidity must be between 0% and 100%.",
+    );
+    return null;
+  }
+
+  if (values.lightIntensity < 0) {
+    Alert.alert(
+      "Invalid light intensity",
+      "Light intensity cannot be negative.",
+    );
+    return null;
+  }
+
+  if (values.soilMoisture < 0 || values.soilMoisture > 100) {
+    Alert.alert(
+      "Invalid soil moisture",
+      "Soil moisture must be between 0% and 100%.",
+    );
+    return null;
+  }
+
+  return values;
 }
 
 export default function CaptureScreen({ navigation }: Props) {
@@ -62,7 +160,7 @@ export default function CaptureScreen({ navigation }: Props) {
 
   const [loading, setLoading] = useState(false);
 
-  const pickImage = async () => {
+  const captureImage = async () => {
     if (loading) {
       return;
     }
@@ -74,7 +172,7 @@ export default function CaptureScreen({ navigation }: Props) {
       if (!permission.granted) {
         Alert.alert(
           "Camera permission required",
-          "Please allow camera access in your phone settings to capture a plant leaf."
+          "Allow camera access in Settings to capture a plant leaf.",
         );
         return;
       }
@@ -86,7 +184,7 @@ export default function CaptureScreen({ navigation }: Props) {
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets?.length > 0) {
+      if (!result.canceled && result.assets[0]?.uri) {
         setImageUri(result.assets[0].uri);
       }
     } catch (error) {
@@ -94,64 +192,72 @@ export default function CaptureScreen({ navigation }: Props) {
 
       Alert.alert(
         "Camera error",
-        "The camera could not be opened. Please try again."
+        "The camera could not be opened. Please try again.",
       );
     }
   };
 
-  const parseEnvironmentValues = (): EnvironmentValues | null => {
-    const values: EnvironmentValues = {
-      temperature: Number.parseFloat(temperature),
-      humidity: Number.parseFloat(humidity),
-      lightIntensity: Number.parseFloat(lightIntensity),
-      soilMoisture: Number.parseFloat(soilMoisture),
-    };
+  const chooseFromLibrary = async () => {
+    if (loading) {
+      return;
+    }
 
-    const invalidNumber = Object.values(values).some(
-      (value) => !Number.isFinite(value)
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          "Photo permission required",
+          "Allow photo-library access to choose a plant image.",
+        );
+        return;
+      }
+
+      const result =
+        await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+        });
+
+      if (!result.canceled && result.assets[0]?.uri) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Gallery error:", error);
+
+      Alert.alert(
+        "Gallery error",
+        "The photo library could not be opened. Please try again.",
+      );
+    }
+  };
+
+  const chooseImageSource = () => {
+    if (loading) {
+      return;
+    }
+
+    Alert.alert(
+      "Choose plant image",
+      "Capture a new image or select one.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Camera",
+          onPress: captureImage,
+        },
+        {
+          text: "Photo library",
+          onPress: chooseFromLibrary,
+        },
+      ],
     );
-
-    if (invalidNumber) {
-      Alert.alert(
-        "Invalid environment values",
-        "Please enter valid numbers in all fields."
-      );
-      return null;
-    }
-
-    if (values.temperature < -50 || values.temperature > 70) {
-      Alert.alert(
-        "Invalid temperature",
-        "Temperature must be between -50°C and 70°C."
-      );
-      return null;
-    }
-
-    if (values.humidity < 0 || values.humidity > 100) {
-      Alert.alert(
-        "Invalid humidity",
-        "Humidity must be between 0% and 100%."
-      );
-      return null;
-    }
-
-    if (values.lightIntensity < 0) {
-      Alert.alert(
-        "Invalid light intensity",
-        "Light intensity cannot be negative."
-      );
-      return null;
-    }
-
-    if (values.soilMoisture < 0 || values.soilMoisture > 100) {
-      Alert.alert(
-        "Invalid soil moisture",
-        "Soil moisture must be between 0% and 100%."
-      );
-      return null;
-    }
-
-    return values;
   };
 
   const submit = async () => {
@@ -162,12 +268,17 @@ export default function CaptureScreen({ navigation }: Props) {
     if (!imageUri) {
       Alert.alert(
         "Image required",
-        "Please capture a clear plant leaf image first."
+        "Capture or select one clear plant-leaf image first.",
       );
       return;
     }
 
-    const environment = parseEnvironmentValues();
+    const environment = validateEnvironment(
+      temperature,
+      humidity,
+      lightIntensity,
+      soilMoisture,
+    );
 
     if (!environment) {
       return;
@@ -176,21 +287,33 @@ export default function CaptureScreen({ navigation }: Props) {
     setLoading(true);
 
     try {
-      const result = await predictPlantHealth(
+      const result = await predictPlant(
         imageUri,
-        environment
+        environment.temperature,
+        environment.humidity,
+        environment.lightIntensity,
+        environment.soilMoisture,
       );
 
-      navigation.navigate("Result", { result });
-    } catch (error: any) {
+      navigation.navigate("Result", {
+        result,
+      });
+    } catch (error) {
+      const status = (
+        error as {
+          response?: {
+            status?: number;
+          };
+        }
+      ).response?.status;
+
+      const message = getBackendErrorMessage(error);
+
       console.error(
         "Prediction error:",
-        error?.response?.status,
-        error?.response?.data ?? error?.message
+        status,
+        message,
       );
-
-      const status = error?.response?.status;
-      const message = getBackendErrorMessage(error);
 
       if (status === 422) {
         Alert.alert("Image rejected", message);
@@ -198,7 +321,7 @@ export default function CaptureScreen({ navigation }: Props) {
         Alert.alert("Invalid image", message);
       } else if (status === 503) {
         Alert.alert("Model unavailable", message);
-      } else if (!error?.response) {
+      } else if (!status) {
         Alert.alert("Backend unreachable", message);
       } else {
         Alert.alert("Prediction failed", message);
@@ -209,166 +332,327 @@ export default function CaptureScreen({ navigation }: Props) {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={
+        Platform.OS === "ios"
+          ? "padding"
+          : undefined
+      }
     >
-      <Text style={styles.title}>Capture Plant Image</Text>
-
-      <Text style={styles.subtitle}>
-        Capture one clear, well-lit plant leaf for analysis.
-      </Text>
-
-      <Pressable
-        style={({ pressed }) => [
-          styles.imagePicker,
-          pressed && styles.imagePickerPressed,
-        ]}
-        onPress={pickImage}
-        disabled={loading}
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {imageUri ? (
-          <Image
-            source={{ uri: imageUri }}
-            style={styles.image}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.cameraIcon}>📷</Text>
-
-            <Text style={styles.imagePickerText}>
-              Tap to capture leaf image
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.eyebrow}>
+              PLANT HEALTH SCAN
             </Text>
 
-            <Text style={styles.imagePickerHint}>
-              Keep the leaf centered, close, and in focus
+            <Text style={styles.title}>
+              New assessment
             </Text>
           </View>
-        )}
-      </Pressable>
 
-      <Text style={styles.sectionTitle}>Environment readings</Text>
+          <View style={styles.stepBadge}>
+            <Text style={styles.stepText}>
+              1 / 2
+            </Text>
+          </View>
+        </View>
 
-      <Text style={styles.label}>Temperature (°C)</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="decimal-pad"
-        value={temperature}
-        onChangeText={setTemperature}
-        placeholder="e.g. 28"
-        editable={!loading}
-      />
+        <Text style={styles.subtitle}>
+          Capture one clear leaf and add the current
+          environment readings.
+        </Text>
 
-      <Text style={styles.label}>Humidity (%)</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="decimal-pad"
-        value={humidity}
-        onChangeText={setHumidity}
-        placeholder="e.g. 55"
-        editable={!loading}
-      />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Capture or choose a plant image"
+          style={({ pressed }) => [
+            styles.imagePicker,
+            pressed && styles.imagePickerPressed,
+          ]}
+          onPress={chooseImageSource}
+          disabled={loading}
+        >
+          {imageUri ? (
+            <>
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.image}
+                resizeMode="cover"
+              />
 
-      <Text style={styles.label}>Light intensity (lux)</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="decimal-pad"
-        value={lightIntensity}
-        onChangeText={setLightIntensity}
-        placeholder="e.g. 40000"
-        editable={!loading}
-      />
+              <View style={styles.imageOverlay}>
+                <Text style={styles.changeImageText}>
+                  Change image
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.placeholder}>
+              <View style={styles.cameraCircle}>
+                <Text style={styles.cameraIcon}>
+                  ⌾
+                </Text>
+              </View>
 
-      <Text style={styles.label}>Soil moisture (%)</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="decimal-pad"
-        value={soilMoisture}
-        onChangeText={setSoilMoisture}
-        placeholder="e.g. 35"
-        editable={!loading}
-      />
+              <Text style={styles.imagePickerText}>
+                Capture or choose a leaf image
+              </Text>
 
-      <Pressable
-        style={({ pressed }) => [
-          styles.submitButton,
-          loading && styles.submitButtonDisabled,
-          pressed && !loading && styles.submitButtonPressed,
-        ]}
-        onPress={submit}
-        disabled={loading}
-      >
-        {loading ? (
-          <>
-            <ActivityIndicator color="#ffffff" />
-            <Text style={styles.submitText}>Analyzing...</Text>
-          </>
-        ) : (
-          <Text style={styles.submitText}>Analyze Plant</Text>
-        )}
-      </Pressable>
-    </ScrollView>
+              <Text style={styles.imagePickerHint}>
+                One close-up leaf · good lighting · keep it
+                in focus
+              </Text>
+            </View>
+          )}
+        </Pressable>
+
+        <View style={styles.tipCard}>
+          <Text style={styles.tipLabel}>
+            PHOTO TIP
+          </Text>
+
+          <Text style={styles.tipText}>
+            Avoid holders, walls, tables, and distant plant
+            photos. The model works best with one visible
+            leaf.
+          </Text>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            Environment readings
+          </Text>
+
+          <Text style={styles.requiredText}>
+            Required
+          </Text>
+        </View>
+
+        <View style={styles.fieldGrid}>
+          <EnvironmentField
+            label="Temperature"
+            unit="°C"
+            value={temperature}
+            onChangeText={setTemperature}
+            editable={!loading}
+          />
+
+          <EnvironmentField
+            label="Humidity"
+            unit="%"
+            value={humidity}
+            onChangeText={setHumidity}
+            editable={!loading}
+          />
+
+          <EnvironmentField
+            label="Light intensity"
+            unit="lux"
+            value={lightIntensity}
+            onChangeText={setLightIntensity}
+            editable={!loading}
+          />
+
+          <EnvironmentField
+            label="Soil moisture"
+            unit="%"
+            value={soilMoisture}
+            onChangeText={setSoilMoisture}
+            editable={!loading}
+          />
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Analyze plant health"
+          style={({ pressed }) => [
+            styles.submitButton,
+            loading && styles.submitButtonDisabled,
+            pressed &&
+              !loading &&
+              styles.submitButtonPressed,
+          ]}
+          onPress={submit}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <ActivityIndicator color="#FFFFFF" />
+
+              <Text style={styles.submitText}>
+                Analyzing image...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.submitText}>
+                Analyze plant health
+              </Text>
+
+              <Text style={styles.submitArrow}>
+                →
+              </Text>
+            </>
+          )}
+        </Pressable>
+
+        <Text style={styles.footerText}>
+          Results are AI-assisted and should support, not
+          replace, careful plant observation.
+        </Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+type EnvironmentFieldProps = {
+  label: string;
+  unit: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  editable: boolean;
+};
+
+function EnvironmentField({
+  label,
+  unit,
+  value,
+  onChangeText,
+  editable,
+}: EnvironmentFieldProps) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>
+        {label}
+      </Text>
+
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          keyboardType="decimal-pad"
+          value={value}
+          onChangeText={onChangeText}
+          placeholder="0"
+          placeholderTextColor="#9AB0A1"
+          editable={editable}
+          accessibilityLabel={label}
+        />
+
+        <Text style={styles.unit}>
+          {unit}
+        </Text>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#F5FAF6",
+  },
+
   container: {
     flexGrow: 1,
-    padding: 20,
-    backgroundColor: "#f1f8f4",
+    paddingHorizontal: 22,
+    paddingTop: 28,
+    paddingBottom: 30,
+  },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  eyebrow: {
+    color: "#659878",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.3,
+    marginBottom: 5,
   },
 
   title: {
-    color: "#1b4332",
-    fontSize: 26,
+    color: "#173C2A",
+    fontSize: 29,
     fontWeight: "800",
-    marginBottom: 6,
+  },
+
+  stepBadge: {
+    borderRadius: 14,
+    backgroundColor: "#DDF1E2",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+
+  stepText: {
+    color: "#2D7A4B",
+    fontSize: 12,
+    fontWeight: "800",
   },
 
   subtitle: {
-    color: "#52796f",
+    color: "#658575",
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 18,
+    marginTop: 8,
+    marginBottom: 20,
   },
 
   imagePicker: {
-    height: 240,
+    height: 242,
     overflow: "hidden",
-    borderRadius: 14,
+    borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: "#95d5b2",
-    justifyContent: "center",
+    borderColor: "#A5D5B5",
     alignItems: "center",
-    marginBottom: 24,
-    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
   },
 
   imagePickerPressed: {
-    opacity: 0.75,
+    opacity: 0.82,
   },
 
   placeholder: {
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
+  },
+
+  cameraCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#DDF1E2",
+    marginBottom: 13,
   },
 
   cameraIcon: {
-    fontSize: 42,
-    marginBottom: 10,
+    color: "#2D7A4B",
+    fontSize: 37,
+    fontWeight: "600",
   },
 
   imagePickerText: {
-    color: "#2d6a4f",
+    color: "#245C39",
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     textAlign: "center",
   },
 
   imagePickerHint: {
-    color: "#7a9188",
+    color: "#789687",
     fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
     marginTop: 6,
   },
@@ -378,56 +662,157 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  sectionTitle: {
-    color: "#1b4332",
-    fontSize: 18,
+  imageOverlay: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(23, 60, 42, 0.82)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+
+  changeImageText: {
+    color: "#FFFFFF",
+    fontSize: 12,
     fontWeight: "800",
+  },
+
+  tipCard: {
+    backgroundColor: "#FFFDF5",
+    borderColor: "#F0E7C7",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 14,
+    marginBottom: 26,
+  },
+
+  tipLabel: {
+    color: "#B18B36",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.2,
     marginBottom: 4,
   },
 
-  label: {
-    color: "#2d6a4f",
-    fontSize: 13,
+  tipText: {
+    color: "#8F7E4A",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 7,
+  },
+
+  sectionTitle: {
+    color: "#234A32",
+    fontSize: 19,
+    fontWeight: "800",
+  },
+
+  requiredText: {
+    color: "#7C9A87",
+    fontSize: 12,
     fontWeight: "700",
-    marginTop: 12,
+  },
+
+  fieldGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+
+  field: {
+    width: "48%",
+    marginTop: 10,
+  },
+
+  label: {
+    color: "#477D5C",
+    fontSize: 12,
+    fontWeight: "800",
     marginBottom: 5,
   },
 
-  input: {
-    color: "#1b4332",
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
+  inputRow: {
+    height: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#D2E6D8",
+    borderRadius: 13,
     borderWidth: 1,
-    borderColor: "#b7dfc8",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingHorizontal: 11,
+  },
+
+  input: {
+    flex: 1,
+    color: "#1B4332",
     fontSize: 16,
+    paddingVertical: 0,
+  },
+
+  unit: {
+    color: "#7A9984",
+    fontSize: 12,
+    fontWeight: "800",
+    marginLeft: 5,
   },
 
   submitButton: {
-    minHeight: 54,
-    backgroundColor: "#2d6a4f",
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    marginTop: 28,
-    marginBottom: 20,
+    minHeight: 57,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 10,
+    backgroundColor: "#2D7A4B",
+    borderRadius: 17,
+    marginTop: 28,
+    elevation: 3,
+    shadowColor: "#185C35",
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
   },
 
   submitButtonDisabled: {
-    backgroundColor: "#74a88f",
+    backgroundColor: "#74A88F",
   },
 
   submitButtonPressed: {
-    opacity: 0.8,
+    opacity: 0.82,
+    transform: [
+      {
+        scale: 0.99,
+      },
+    ],
   },
 
   submitText: {
-    color: "#ffffff",
-    fontWeight: "800",
+    color: "#FFFFFF",
     fontSize: 16,
+    fontWeight: "900",
+  },
+
+  submitArrow: {
+    color: "#D6F2DE",
+    fontSize: 23,
+    fontWeight: "400",
+    marginLeft: 10,
+  },
+
+  footerText: {
+    color: "#8AA992",
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: "center",
+    marginTop: 18,
   },
 });
