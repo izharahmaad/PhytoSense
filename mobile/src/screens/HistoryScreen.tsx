@@ -4,7 +4,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -22,11 +21,14 @@ import {
 } from "../services/api";
 
 function formatStressLevel(value: string): string {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase(),
-    );
+  const text = String(value || "unknown")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text.replace(/\b\w/g, (letter) =>
+    letter.toUpperCase(),
+  );
 }
 
 function formatDate(value: string): string {
@@ -36,7 +38,16 @@ function formatDate(value: string): string {
     return "Date unavailable";
   }
 
-  return date.toLocaleString();
+  return date.toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function getTime(value: string): number {
+  const time = new Date(value).getTime();
+
+  return Number.isFinite(time) ? time : 0;
 }
 
 function getHealthColor(score: number): string {
@@ -52,17 +63,177 @@ function getHealthColor(score: number): string {
 }
 
 function getStressColor(stressLevel: string): string {
-  const normalized = stressLevel.toLowerCase();
+  const normalized = String(
+    stressLevel || "",
+  ).toLowerCase();
 
-  if (normalized.includes("healthy")) {
+  if (
+    normalized.includes("healthy") ||
+    normalized.includes("low") ||
+    normalized.includes("none")
+  ) {
     return "#2D7A4B";
   }
 
-  if (normalized.includes("mild")) {
+  if (
+    normalized.includes("mild") ||
+    normalized.includes("moderate")
+  ) {
     return "#A67829";
   }
 
   return "#B54848";
+}
+
+function normalizeScore(value: unknown): number {
+  const score = Number(value);
+
+  if (!Number.isFinite(score)) {
+    return 0;
+  }
+
+  const normalized = score > 1 ? score / 100 : score;
+
+  return Math.max(0, Math.min(1, normalized));
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to load assessment history.";
+}
+
+function SummaryStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.summaryStat}>
+      <Text style={styles.summaryValue}>
+        {value}
+      </Text>
+
+      <Text style={styles.summaryLabel}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function AssessmentCard({
+  item,
+}: {
+  item: HistoryItem;
+}) {
+  const score = normalizeScore(item.health_score);
+  const percentage = Math.round(score * 100);
+  const stressColor = getStressColor(
+    item.stress_level,
+  );
+  const healthColor = getHealthColor(score);
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTopRow}>
+        <View style={styles.dateCopy}>
+          <Text style={styles.dateLabel}>
+            ASSESSMENT
+          </Text>
+
+          <Text style={styles.date}>
+            {formatDate(item.created_at)}
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              backgroundColor: `${stressColor}18`,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.statusDot,
+              {
+                backgroundColor: stressColor,
+              },
+            ]}
+          />
+
+          <Text
+            style={[
+              styles.statusText,
+              {
+                color: stressColor,
+              },
+            ]}
+          >
+            {formatStressLevel(item.stress_level)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.scorePanel}>
+        <View style={styles.scoreCopy}>
+          <Text style={styles.scoreLabel}>
+            Health score
+          </Text>
+
+          <Text
+            style={[
+              styles.score,
+              {
+                color: healthColor,
+              },
+            ]}
+          >
+            {percentage}%
+          </Text>
+        </View>
+
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel="Health score"
+          accessibilityValue={{
+            min: 0,
+            max: 100,
+            now: percentage,
+            text: `${percentage}%`,
+          }}
+          style={styles.progressTrack}
+        >
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${percentage}%`,
+                backgroundColor: healthColor,
+              },
+            ]}
+          />
+        </View>
+      </View>
+
+      <View style={styles.recommendationBox}>
+        <Text style={styles.recommendationLabel}>
+          RECOMMENDATION
+        </Text>
+
+        <Text style={styles.recommendation}>
+          {item.recommendation?.trim() ||
+            "No recommendation was recorded."}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 export default function HistoryScreen() {
@@ -82,21 +253,16 @@ export default function HistoryScreen() {
 
       try {
         const history = await fetchHistory();
-        setItems(history);
+
+        const sortedHistory = [...history].sort(
+          (first, second) =>
+            getTime(second.created_at) -
+            getTime(first.created_at),
+        );
+
+        setItems(sortedHistory);
       } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Unable to load assessment history.";
-
-        setErrorMessage(message);
-
-        if (showLoader) {
-          Alert.alert(
-            "History unavailable",
-            message,
-          );
-        }
+        setErrorMessage(getErrorMessage(error));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -108,13 +274,19 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadHistory();
+
+      return undefined;
     }, [loadHistory]),
   );
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     setRefreshing(true);
     void loadHistory(false);
-  };
+  }, [loadHistory]);
+
+  const retry = useCallback(() => {
+    void loadHistory();
+  }, [loadHistory]);
 
   if (loading) {
     return (
@@ -125,18 +297,37 @@ export default function HistoryScreen() {
         />
 
         <View style={styles.center}>
-          <ActivityIndicator
-            size="large"
-            color="#2D7A4B"
-          />
+          <View style={styles.loadingCircle}>
+            <ActivityIndicator
+              size="large"
+              color="#2D7A4B"
+            />
+          </View>
+
+          <Text style={styles.loadingTitle}>
+            Loading assessments
+          </Text>
 
           <Text style={styles.loadingText}>
-            Loading assessments...
+            Fetching your plant-health records...
           </Text>
         </View>
       </SafeAreaView>
     );
   }
+
+  const averageScore =
+    items.length > 0
+      ? Math.round(
+          (items.reduce(
+            (total, item) =>
+              total + normalizeScore(item.health_score),
+            0,
+          ) /
+            items.length) *
+            100,
+        )
+      : 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -153,7 +344,12 @@ export default function HistoryScreen() {
             styles.emptyListContent,
         ]}
         data={items}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) =>
+          `${item.id}-${index}`
+        }
+        renderItem={({ item }) => (
+          <AssessmentCard item={item} />
+        )}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -164,155 +360,100 @@ export default function HistoryScreen() {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.eyebrow}>
-              PLANT HEALTH RECORDS
-            </Text>
+            <View style={styles.headerTopRow}>
+              <View style={styles.headerCopy}>
+                <Text style={styles.eyebrow}>
+                  PLANT HEALTH RECORDS
+                </Text>
 
-            <Text style={styles.title}>
-              Assessment history
-            </Text>
+                <Text style={styles.title}>
+                  Assessment history
+                </Text>
 
-            <Text style={styles.subtitle}>
-              Review your previous plant-health
-              assessments.
-            </Text>
+                <Text style={styles.subtitle}>
+                  Track previous scans and follow the
+                  recommended care steps.
+                </Text>
+              </View>
+
+              <View style={styles.historyIcon}>
+                <Text style={styles.historyIconText}>
+                  ◷
+                </Text>
+              </View>
+            </View>
+
+            {items.length > 0 && (
+              <View style={styles.summaryCard}>
+                <SummaryStat
+                  label="Total scans"
+                  value={String(items.length)}
+                />
+
+                <View style={styles.summaryDivider} />
+
+                <SummaryStat
+                  label="Average health"
+                  value={`${averageScore}%`}
+                />
+
+                <View style={styles.summaryDivider} />
+
+                <SummaryStat
+                  label="Latest"
+                  value="Today"
+                />
+              </View>
+            )}
 
             {errorMessage && (
               <View style={styles.errorBanner}>
-                <Text style={styles.errorTitle}>
-                  Could not refresh history
-                </Text>
-
-                <Text style={styles.errorText}>
-                  {errorMessage}
-                </Text>
-
-                <Pressable
-                  style={styles.retryButton}
-                  onPress={() => void loadHistory()}
-                >
-                  <Text style={styles.retryText}>
-                    Try again
+                <View style={styles.errorIcon}>
+                  <Text style={styles.errorIconText}>
+                    !
                   </Text>
-                </Pressable>
+                </View>
+
+                <View style={styles.errorCopy}>
+                  <Text style={styles.errorTitle}>
+                    Could not refresh history
+                  </Text>
+
+                  <Text style={styles.errorText}>
+                    {errorMessage}
+                  </Text>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading history"
+                    style={({ pressed }) => [
+                      styles.retryButton,
+                      pressed &&
+                        styles.retryButtonPressed,
+                    ]}
+                    onPress={retry}
+                  >
+                    <Text style={styles.retryText}>
+                      Try again
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             )}
 
             {items.length > 0 && (
-              <Text style={styles.countText}>
-                {items.length}{" "}
-                {items.length === 1
-                  ? "assessment"
-                  : "assessments"}
-              </Text>
+              <View style={styles.listHeading}>
+                <Text style={styles.listTitle}>
+                  Recent assessments
+                </Text>
+
+                <Text style={styles.listHint}>
+                  Newest first
+                </Text>
+              </View>
             )}
           </View>
         }
-        renderItem={({ item }) => {
-          const score = Number(item.health_score);
-          const safeScore = Number.isFinite(score)
-            ? Math.max(0, Math.min(1, score))
-            : 0;
-
-          const stressColor = getStressColor(
-            item.stress_level,
-          );
-
-          const healthColor = getHealthColor(
-            safeScore,
-          );
-
-          return (
-            <View style={styles.card}>
-              <View style={styles.cardTopRow}>
-                <Text style={styles.date}>
-                  {formatDate(item.created_at)}
-                </Text>
-
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        `${stressColor}18`,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.statusDot,
-                      {
-                        backgroundColor: stressColor,
-                      },
-                    ]}
-                  />
-
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color: stressColor,
-                      },
-                    ]}
-                  >
-                    {formatStressLevel(
-                      item.stress_level,
-                    )}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.scoreRow}>
-                <View style={styles.scoreCopy}>
-                  <Text style={styles.scoreLabel}>
-                    Health score
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.score,
-                      {
-                        color: healthColor,
-                      },
-                    ]}
-                  >
-                    {Math.round(safeScore * 100)}%
-                  </Text>
-                </View>
-
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${safeScore * 100}%`,
-                        backgroundColor: healthColor,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              {item.recommendation ? (
-                <View style={styles.recommendationBox}>
-                  <Text
-                    style={styles.recommendationLabel}
-                  >
-                    Recommendation
-                  </Text>
-
-                  <Text style={styles.recommendation}>
-                    {item.recommendation}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.noRecommendation}>
-                  No recommendation was recorded.
-                </Text>
-              )}
-            </View>
-          );
-        }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={styles.emptyIconCircle}>
@@ -326,8 +467,8 @@ export default function HistoryScreen() {
             </Text>
 
             <Text style={styles.emptyText}>
-              Your completed plant-health assessments
-              will appear here.
+              Complete your first plant-health scan and
+              the result will appear here.
             </Text>
           </View>
         }
@@ -346,19 +487,19 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {
-    flex: 1,
     backgroundColor: "#F5FAF6",
+    flex: 1,
   },
 
   list: {
-    flex: 1,
     backgroundColor: "#F5FAF6",
+    flex: 1,
   },
 
   listContent: {
-    paddingHorizontal: 20,
-    paddingTop: 26,
     paddingBottom: 30,
+    paddingHorizontal: 20,
+    paddingTop: 25,
   },
 
   emptyListContent: {
@@ -366,20 +507,49 @@ const styles = StyleSheet.create({
   },
 
   center: {
-    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
     backgroundColor: "#F5FAF6",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 25,
+  },
+
+  loadingCircle: {
+    alignItems: "center",
+    backgroundColor: "#E2F2E6",
+    borderRadius: 34,
+    height: 68,
+    justifyContent: "center",
+    width: 68,
+  },
+
+  loadingTitle: {
+    color: "#234A32",
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 17,
   },
 
   loadingText: {
-    color: "#628472",
+    color: "#789687",
     fontSize: 13,
-    marginTop: 12,
+    marginTop: 6,
+    textAlign: "center",
   },
 
   header: {
-    marginBottom: 20,
+    marginBottom: 19,
+  },
+
+  headerTopRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  headerCopy: {
+    flex: 1,
+    paddingRight: 15,
   },
 
   eyebrow: {
@@ -403,20 +573,87 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
 
-  countText: {
-    color: "#7B9885",
-    fontSize: 12,
+  historyIcon: {
+    alignItems: "center",
+    backgroundColor: "#DDF1E2",
+    borderRadius: 26,
+    height: 52,
+    justifyContent: "center",
+    width: 52,
+  },
+
+  historyIconText: {
+    color: "#2D7A4B",
+    fontSize: 29,
+  },
+
+  summaryCard: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#DCEBE0",
+    borderRadius: 17,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 19,
+    paddingHorizontal: 10,
+    paddingVertical: 15,
+  },
+
+  summaryStat: {
+    alignItems: "center",
+    flex: 1,
+  },
+
+  summaryValue: {
+    color: "#2D7A4B",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+
+  summaryLabel: {
+    color: "#82998A",
+    fontSize: 10,
     fontWeight: "700",
-    marginTop: 18,
+    marginTop: 4,
+    textAlign: "center",
+  },
+
+  summaryDivider: {
+    backgroundColor: "#E2EEE5",
+    height: 31,
+    width: 1,
   },
 
   errorBanner: {
+    alignItems: "flex-start",
     backgroundColor: "#FFF4F2",
     borderColor: "#F0C9C3",
-    borderRadius: 15,
+    borderRadius: 16,
     borderWidth: 1,
-    marginTop: 18,
-    padding: 14,
+    flexDirection: "row",
+    marginTop: 16,
+    padding: 13,
+  },
+
+  errorIcon: {
+    alignItems: "center",
+    backgroundColor: "#F5D8D3",
+    borderRadius: 12,
+    height: 25,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 25,
+  },
+
+  errorIconText: {
+    color: "#9D3E38",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  errorCopy: {
+    flex: 1,
   },
 
   errorTitle: {
@@ -441,10 +678,33 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
+  retryButtonPressed: {
+    opacity: 0.8,
+  },
+
   retryText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "800",
+  },
+
+  listHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 22,
+  },
+
+  listTitle: {
+    color: "#234A32",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  listHint: {
+    color: "#86A292",
+    fontSize: 11,
+    fontWeight: "700",
   },
 
   card: {
@@ -452,30 +712,41 @@ const styles = StyleSheet.create({
     borderColor: "#DCEBE0",
     borderRadius: 19,
     borderWidth: 1,
+    elevation: 2,
     marginBottom: 13,
     padding: 16,
     shadowColor: "#1B4332",
-    shadowOpacity: 0.05,
-    shadowRadius: 7,
     shadowOffset: {
       width: 0,
       height: 3,
     },
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 7,
   },
 
   cardTopRow: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 15,
+  },
+
+  dateCopy: {
+    flex: 1,
+    marginRight: 10,
+  },
+
+  dateLabel: {
+    color: "#9AAEA0",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 3,
   },
 
   date: {
-    color: "#8A9C91",
-    flex: 1,
+    color: "#718A7A",
     fontSize: 11,
-    marginRight: 10,
   },
 
   statusBadge: {
@@ -500,8 +771,11 @@ const styles = StyleSheet.create({
     textTransform: "capitalize",
   },
 
-  scoreRow: {
-    marginBottom: 14,
+  scorePanel: {
+    backgroundColor: "#F7FBF8",
+    borderRadius: 13,
+    marginBottom: 13,
+    padding: 12,
   },
 
   scoreCopy: {
@@ -523,7 +797,7 @@ const styles = StyleSheet.create({
   },
 
   progressTrack: {
-    backgroundColor: "#E5F0E8",
+    backgroundColor: "#E1EEE4",
     borderRadius: 5,
     height: 8,
     overflow: "hidden",
@@ -547,19 +821,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.8,
     marginBottom: 4,
-    textTransform: "uppercase",
   },
 
   recommendation: {
     color: "#42664E",
     fontSize: 13,
     lineHeight: 19,
-  },
-
-  noRecommendation: {
-    color: "#9AAFA0",
-    fontSize: 12,
-    fontStyle: "italic",
   },
 
   emptyState: {
