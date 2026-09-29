@@ -48,7 +48,7 @@ causes more reliably than image-only classification?
 ```
 
 ## Project Status
-This repository is roughly **60% complete**: the model architecture, training
+This repository  roughly **60% complete**: the model architecture, training
 pipeline, FastAPI backend, database layer, and mobile app screens/navigation
 are scaffolded and functional at a skeleton level. Remaining work is listed in
 `docs/roadmap.md`.
