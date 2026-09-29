@@ -19,10 +19,13 @@ type Props = NativeStackScreenProps<
   "Result"
 >;
 
-type ProbabilityEntry = [string, number];
+type ProbabilityEntry = [
+  string,
+  number,
+];
 
 function formatLabel(value: string): string {
-  return String(value || "Unknown")
+  return value
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -45,23 +48,8 @@ function toPercentage(value: unknown): number {
 
   return Math.max(
     0,
-    Math.min(
-      100,
-      Math.round(normalizedValue * 100),
-    ),
+    Math.min(100, Math.round(normalizedValue * 100)),
   );
-}
-
-function normalizeScore(value: unknown): number {
-  const score = Number(value);
-
-  if (!Number.isFinite(score)) {
-    return 0;
-  }
-
-  const normalized = score > 1 ? score / 100 : score;
-
-  return Math.max(0, Math.min(1, normalized));
 }
 
 function getBarColor(percentage: number): string {
@@ -76,18 +64,6 @@ function getBarColor(percentage: number): string {
   return "#B54848";
 }
 
-function getHealthLabel(score: number): string {
-  if (score >= 0.75) {
-    return "Healthy condition";
-  }
-
-  if (score >= 0.5) {
-    return "Needs attention";
-  }
-
-  return "High attention needed";
-}
-
 function getEntries(
   values: unknown,
 ): ProbabilityEntry[] {
@@ -99,15 +75,11 @@ function getEntries(
     return [];
   }
 
-  return Object.entries(
-    values as Record<string, unknown>,
-  )
-    .filter(([, value]) =>
-      Number.isFinite(Number(value)),
-    )
+  return Object.entries(values as Record<string, unknown>)
+    .filter(([, value]) => Number.isFinite(Number(value)))
     .sort(
-      (first, second) =>
-        Number(second[1]) - Number(first[1]),
+      (a, b) =>
+        Number(b[1]) - Number(a[1]),
     ) as ProbabilityEntry[];
 }
 
@@ -222,14 +194,6 @@ export default function ResultScreen({
 }: Props) {
   const { result } = route.params;
 
-  const healthScore = normalizeScore(
-    result.health_score,
-  );
-
-  const healthPercentage = Math.round(
-    healthScore * 100,
-  );
-
   const causeEntries = getEntries(
     result.cause_probabilities,
   );
@@ -240,7 +204,7 @@ export default function ResultScreen({
 
   const recommendation =
     result.recommendation?.trim() ||
-    "Continue observing the plant and review its growing conditions.";
+    "Continue observing the plant and review its environment.";
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -264,7 +228,7 @@ export default function ResultScreen({
             </Text>
 
             <Text style={styles.subtitle}>
-              Your plant analysis is ready to review.
+              Here is the latest analysis of your plant.
             </Text>
           </View>
 
@@ -276,14 +240,14 @@ export default function ResultScreen({
         </View>
 
         <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroCopy}>
-              <Text style={styles.heroLabel}>
-                OVERALL HEALTH
-              </Text>
+          <Text style={styles.heroLabel}>
+            OVERALL HEALTH
+          </Text>
 
+          <View style={styles.heroScoreRow}>
+            <View style={styles.heroScoreCopy}>
               <Text style={styles.heroTitle}>
-                {getHealthLabel(healthScore)}
+                Health overview
               </Text>
 
               <Text style={styles.heroHint}>
@@ -301,44 +265,8 @@ export default function ResultScreen({
 
           <View style={styles.healthCardWrap}>
             <HealthScoreCard
-              score={healthScore}
+              score={result.health_score}
             />
-          </View>
-
-          <View style={styles.heroStats}>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>
-                {healthPercentage}%
-              </Text>
-
-              <Text style={styles.heroStatLabel}>
-                Health score
-              </Text>
-            </View>
-
-            <View style={styles.heroDivider} />
-
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>
-                {causeEntries.length}
-              </Text>
-
-              <Text style={styles.heroStatLabel}>
-                Cause signals
-              </Text>
-            </View>
-
-            <View style={styles.heroDivider} />
-
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>
-                {environmentEntries.length}
-              </Text>
-
-              <Text style={styles.heroStatLabel}>
-                Environment signals
-              </Text>
-            </View>
           </View>
 
           <View style={styles.stressRow}>
@@ -353,15 +281,9 @@ export default function ResultScreen({
         </View>
 
         <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionHeaderTitle}>
-              Analysis details
-            </Text>
-
-            <Text style={styles.sectionHeaderSubtitle}>
-              Review the strongest signals first.
-            </Text>
-          </View>
+          <Text style={styles.sectionHeaderTitle}>
+            Analysis details
+          </Text>
 
           <Text style={styles.sectionHeaderHint}>
             Highest first
@@ -384,13 +306,13 @@ export default function ResultScreen({
 
         <View style={styles.recommendationCard}>
           <View style={styles.recommendationHeader}>
-            <View style={styles.recommendationCopy}>
+            <View>
               <Text style={styles.recommendationEyebrow}>
                 NEXT STEP
               </Text>
 
               <Text style={styles.recommendationTitle}>
-                Recommended care
+                Recommendation
               </Text>
             </View>
 
@@ -446,14 +368,14 @@ export default function ResultScreen({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: "#F5FAF6",
     flex: 1,
+    backgroundColor: "#F5FAF6",
   },
 
   container: {
-    paddingBottom: 32,
     paddingHorizontal: 20,
     paddingTop: 25,
+    paddingBottom: 32,
   },
 
   headerRow: {
@@ -513,17 +435,6 @@ const styles = StyleSheet.create({
     padding: 17,
   },
 
-  heroTopRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
-  heroCopy: {
-    flex: 1,
-    paddingRight: 16,
-  },
-
   heroLabel: {
     color: "#5F9271",
     fontSize: 10,
@@ -531,11 +442,22 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
+  heroScoreRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 7,
+  },
+
+  heroScoreCopy: {
+    flex: 1,
+    paddingRight: 16,
+  },
+
   heroTitle: {
     color: "#1D5133",
     fontSize: 20,
     fontWeight: "800",
-    marginTop: 5,
   },
 
   heroHint: {
@@ -560,41 +482,7 @@ const styles = StyleSheet.create({
   },
 
   healthCardWrap: {
-    marginTop: 14,
-  },
-
-  heroStats: {
-    alignItems: "center",
-    borderTopColor: "#D3EAD8",
-    borderTopWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginTop: 14,
-    paddingTop: 14,
-  },
-
-  heroStat: {
-    alignItems: "center",
-    flex: 1,
-  },
-
-  heroStatValue: {
-    color: "#2D7A4B",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-
-  heroStatLabel: {
-    color: "#71927D",
-    fontSize: 9,
-    marginTop: 3,
-    textAlign: "center",
-  },
-
-  heroDivider: {
-    backgroundColor: "#C9E3CF",
-    height: 28,
-    width: 1,
+    marginTop: 13,
   },
 
   stressRow: {
@@ -616,7 +504,7 @@ const styles = StyleSheet.create({
   },
 
   sectionHeader: {
-    alignItems: "flex-end",
+    alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 10,
@@ -628,17 +516,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  sectionHeaderSubtitle: {
-    color: "#86A292",
-    fontSize: 11,
-    marginTop: 3,
-  },
-
   sectionHeaderHint: {
     color: "#86A292",
     fontSize: 11,
     fontWeight: "700",
-    marginBottom: 2,
   },
 
   sectionCard: {
@@ -646,16 +527,16 @@ const styles = StyleSheet.create({
     borderColor: "#DCEBE0",
     borderRadius: 18,
     borderWidth: 1,
-    elevation: 2,
     marginBottom: 13,
     padding: 16,
     shadowColor: "#1B4332",
+    shadowOpacity: 0.04,
+    shadowRadius: 7,
     shadowOffset: {
       width: 0,
       height: 3,
     },
-    shadowOpacity: 0.04,
-    shadowRadius: 7,
+    elevation: 2,
   },
 
   sectionHeading: {
@@ -765,10 +646,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  recommendationCopy: {
-    flex: 1,
-  },
-
   recommendationEyebrow: {
     color: "#B18B36",
     fontSize: 10,
@@ -812,6 +689,7 @@ const styles = StyleSheet.create({
   },
 
   disclaimerIcon: {
+    alignItems: "center",
     backgroundColor: "#DDEBE0",
     borderRadius: 9,
     color: "#518064",
@@ -836,18 +714,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#2D7A4B",
     borderRadius: 16,
-    elevation: 3,
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 22,
     minHeight: 54,
     shadowColor: "#185C35",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
+    elevation: 3,
   },
 
   buttonPressed: {
