@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,7 +19,10 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { predictPlant } from "../services/api";
 
-type Props = NativeStackScreenProps<RootStackParamList, "Capture">;
+type Props = NativeStackScreenProps<
+  RootStackParamList,
+  "Capture"
+>;
 
 type EnvironmentValues = {
   temperature: number;
@@ -38,7 +42,9 @@ type BackendError = {
   message?: string;
 };
 
-function getBackendErrorMessage(error: unknown): string {
+function getBackendErrorMessage(
+  error: unknown,
+): string {
   const candidate = error as BackendError;
   const detail = candidate.response?.data?.detail;
 
@@ -55,7 +61,8 @@ function getBackendErrorMessage(error: unknown): string {
           "msg" in item
         ) {
           return String(
-            (item as { msg?: unknown }).msg ?? "Invalid request",
+            (item as { msg?: unknown }).msg ??
+              "Invalid request",
           );
         }
 
@@ -65,13 +72,17 @@ function getBackendErrorMessage(error: unknown): string {
   }
 
   if (candidate.response?.status) {
-    return `The server returned HTTP ${candidate.response.status}.`;
+    return (
+      `The server returned HTTP ` +
+      `${candidate.response.status}.`
+    );
   }
 
   if (candidate.request) {
     return (
-      "The backend could not be reached. Make sure it is running " +
-      "and your phone is connected to the same Wi-Fi network."
+      "The backend could not be reached. " +
+      "Make sure it is running and your phone is " +
+      "connected to the same Wi-Fi network."
     );
   }
 
@@ -82,6 +93,12 @@ function getBackendErrorMessage(error: unknown): string {
   return "Something went wrong while analyzing the image.";
 }
 
+function parseNumber(value: string): number {
+  return Number.parseFloat(
+    value.replace(",", ".").trim(),
+  );
+}
+
 function validateEnvironment(
   temperatureText: string,
   humidityText: string,
@@ -89,18 +106,10 @@ function validateEnvironment(
   soilMoistureText: string,
 ): EnvironmentValues | null {
   const values: EnvironmentValues = {
-    temperature: Number.parseFloat(
-      temperatureText.replace(",", "."),
-    ),
-    humidity: Number.parseFloat(
-      humidityText.replace(",", "."),
-    ),
-    lightIntensity: Number.parseFloat(
-      lightIntensityText.replace(",", "."),
-    ),
-    soilMoisture: Number.parseFloat(
-      soilMoistureText.replace(",", "."),
-    ),
+    temperature: parseNumber(temperatureText),
+    humidity: parseNumber(humidityText),
+    lightIntensity: parseNumber(lightIntensityText),
+    soilMoisture: parseNumber(soilMoistureText),
   };
 
   const hasInvalidNumber = Object.values(values).some(
@@ -109,13 +118,16 @@ function validateEnvironment(
 
   if (hasInvalidNumber) {
     Alert.alert(
-      "Invalid environment values",
+      "Missing environment data",
       "Enter a valid number in every environment field.",
     );
     return null;
   }
 
-  if (values.temperature < -50 || values.temperature > 70) {
+  if (
+    values.temperature < -50 ||
+    values.temperature > 70
+  ) {
     Alert.alert(
       "Invalid temperature",
       "Temperature must be between -50°C and 70°C.",
@@ -123,7 +135,10 @@ function validateEnvironment(
     return null;
   }
 
-  if (values.humidity < 0 || values.humidity > 100) {
+  if (
+    values.humidity < 0 ||
+    values.humidity > 100
+  ) {
     Alert.alert(
       "Invalid humidity",
       "Humidity must be between 0% and 100%.",
@@ -131,15 +146,21 @@ function validateEnvironment(
     return null;
   }
 
-  if (values.lightIntensity < 0) {
+  if (
+    values.lightIntensity < 0 ||
+    values.lightIntensity > 200000
+  ) {
     Alert.alert(
       "Invalid light intensity",
-      "Light intensity cannot be negative.",
+      "Light intensity must be between 0 and 200,000 lux.",
     );
     return null;
   }
 
-  if (values.soilMoisture < 0 || values.soilMoisture > 100) {
+  if (
+    values.soilMoisture < 0 ||
+    values.soilMoisture > 100
+  ) {
     Alert.alert(
       "Invalid soil moisture",
       "Soil moisture must be between 0% and 100%.",
@@ -150,17 +171,60 @@ function validateEnvironment(
   return values;
 }
 
-export default function CaptureScreen({ navigation }: Props) {
-  const [imageUri, setImageUri] = useState<string | null>(null);
+function getProgressText(
+  hasImage: boolean,
+  fieldCount: number,
+): string {
+  if (!hasImage) {
+    return "Step 1 of 2 · Add a leaf image";
+  }
+
+  if (fieldCount < 4) {
+    return "Step 2 of 2 · Complete all readings";
+  }
+
+  return "Ready to analyze";
+}
+
+function isFilled(value: string): boolean {
+  return value.trim().length > 0;
+}
+
+export default function CaptureScreen({
+  navigation,
+}: Props) {
+  const [imageUri, setImageUri] =
+    useState<string | null>(null);
 
   const [temperature, setTemperature] = useState("28");
   const [humidity, setHumidity] = useState("55");
-  const [lightIntensity, setLightIntensity] = useState("40000");
-  const [soilMoisture, setSoilMoisture] = useState("35");
+  const [lightIntensity, setLightIntensity] =
+    useState("40000");
+  const [soilMoisture, setSoilMoisture] =
+    useState("35");
 
   const [loading, setLoading] = useState(false);
 
-  const captureImage = async () => {
+  const completedFields = useMemo(() => {
+    return [
+      temperature,
+      humidity,
+      lightIntensity,
+      soilMoisture,
+    ].filter(isFilled).length;
+  }, [
+    temperature,
+    humidity,
+    lightIntensity,
+    soilMoisture,
+  ]);
+
+  const progressText = getProgressText(
+    Boolean(imageUri),
+    completedFields,
+  );
+
+  const openCamera = async () => {
     if (loading) {
       return;
     }
@@ -177,14 +241,18 @@ export default function CaptureScreen({ navigation }: Props) {
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+      const result =
+        await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.85,
+        });
 
-      if (!result.canceled && result.assets[0]?.uri) {
+      if (
+        !result.canceled &&
+        result.assets[0]?.uri
+      ) {
         setImageUri(result.assets[0].uri);
       }
     } catch (error) {
@@ -197,7 +265,7 @@ export default function CaptureScreen({ navigation }: Props) {
     }
   };
 
-  const chooseFromLibrary = async () => {
+  const openLibrary = async () => {
     if (loading) {
       return;
     }
@@ -219,10 +287,13 @@ export default function CaptureScreen({ navigation }: Props) {
           mediaTypes: ["images"],
           allowsEditing: true,
           aspect: [4, 3],
-          quality: 0.8,
+          quality: 0.85,
         });
 
-      if (!result.canceled && result.assets[0]?.uri) {
+      if (
+        !result.canceled &&
+        result.assets[0]?.uri
+      ) {
         setImageUri(result.assets[0].uri);
       }
     } catch (error) {
@@ -242,7 +313,7 @@ export default function CaptureScreen({ navigation }: Props) {
 
     Alert.alert(
       "Choose plant image",
-      "Capture a new image or select one.",
+      "Use a close-up image of one visible leaf.",
       [
         {
           text: "Cancel",
@@ -250,20 +321,34 @@ export default function CaptureScreen({ navigation }: Props) {
         },
         {
           text: "Camera",
-          onPress: captureImage,
+          onPress: () => {
+            void openCamera();
+          },
         },
         {
           text: "Photo library",
-          onPress: chooseFromLibrary,
+          onPress: () => {
+            void openLibrary();
+          },
         },
       ],
     );
+  };
+
+  const removeImage = () => {
+    if (loading) {
+      return;
+    }
+
+    setImageUri(null);
   };
 
   const submit = async () => {
     if (loading) {
       return;
     }
+
+    Keyboard.dismiss();
 
     if (!imageUri) {
       Alert.alert(
@@ -318,7 +403,7 @@ export default function CaptureScreen({ navigation }: Props) {
       if (status === 422) {
         Alert.alert("Image rejected", message);
       } else if (status === 400) {
-        Alert.alert("Invalid image", message);
+        Alert.alert("Invalid request", message);
       } else if (status === 503) {
         Alert.alert("Model unavailable", message);
       } else if (!status) {
@@ -346,13 +431,18 @@ export default function CaptureScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
-          <View>
+          <View style={styles.headerCopy}>
             <Text style={styles.eyebrow}>
               PLANT HEALTH SCAN
             </Text>
 
             <Text style={styles.title}>
               New assessment
+            </Text>
+
+            <Text style={styles.subtitle}>
+              Capture one clear leaf and add the current
+              growing conditions.
             </Text>
           </View>
 
@@ -363,16 +453,70 @@ export default function CaptureScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <Text style={styles.subtitle}>
-          Capture one clear leaf and add the current
-          environment readings.
-        </Text>
+        <View style={styles.progressCard}>
+          <View style={styles.progressTopRow}>
+            <Text style={styles.progressText}>
+              {progressText}
+            </Text>
+
+            <Text style={styles.progressPercent}>
+              {imageUri && completedFields === 4
+                ? "100%"
+                : imageUri
+                  ? "75%"
+                  : "25%"}
+            </Text>
+          </View>
+
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width:
+                    imageUri && completedFields === 4
+                      ? "100%"
+                      : imageUri
+                        ? "75%"
+                        : "25%",
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>
+              Leaf image
+            </Text>
+
+            <Text style={styles.sectionHint}>
+              One close-up leaf works best.
+            </Text>
+          </View>
+
+          {imageUri && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Remove selected image"
+              hitSlop={8}
+              onPress={removeImage}
+              disabled={loading}
+            >
+              <Text style={styles.removeText}>
+                Remove
+              </Text>
+            </Pressable>
+          )}
+        </View>
 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Capture or choose a plant image"
           style={({ pressed }) => [
             styles.imagePicker,
+            imageUri && styles.imagePickerSelected,
             pressed && styles.imagePickerPressed,
           ]}
           onPress={chooseImageSource}
@@ -391,6 +535,12 @@ export default function CaptureScreen({ navigation }: Props) {
                   Change image
                 </Text>
               </View>
+
+              <View style={styles.imageCheck}>
+                <Text style={styles.imageCheckText}>
+                  ✓
+                </Text>
+              </View>
             </>
           ) : (
             <View style={styles.placeholder}>
@@ -405,38 +555,59 @@ export default function CaptureScreen({ navigation }: Props) {
               </Text>
 
               <Text style={styles.imagePickerHint}>
-                One close-up leaf · good lighting · keep it
-                in focus
+                Good lighting · no blur · leaf fills the
+                frame
               </Text>
+
+              <View style={styles.chooseButton}>
+                <Text style={styles.chooseButtonText}>
+                  Choose image
+                </Text>
+              </View>
             </View>
           )}
         </Pressable>
 
         <View style={styles.tipCard}>
-          <Text style={styles.tipLabel}>
-            PHOTO TIP
-          </Text>
+          <View style={styles.tipIcon}>
+            <Text style={styles.tipIconText}>
+              i
+            </Text>
+          </View>
 
-          <Text style={styles.tipText}>
-            Avoid holders, walls, tables, and distant plant
-            photos. The model works best with one visible
-            leaf.
-          </Text>
+          <View style={styles.tipCopy}>
+            <Text style={styles.tipLabel}>
+              PHOTO TIP
+            </Text>
+
+            <Text style={styles.tipText}>
+              Avoid holders, walls, tables, and distant
+              plant photos. Keep one leaf visible and in
+              focus.
+            </Text>
+          </View>
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Environment readings
-          </Text>
+          <View>
+            <Text style={styles.sectionTitle}>
+              Environment readings
+            </Text>
+
+            <Text style={styles.sectionHint}>
+              Values used alongside the image analysis.
+            </Text>
+          </View>
 
           <Text style={styles.requiredText}>
-            Required
+            {completedFields}/4 complete
           </Text>
         </View>
 
         <View style={styles.fieldGrid}>
           <EnvironmentField
             label="Temperature"
+            hint="Current air temperature"
             unit="°C"
             value={temperature}
             onChangeText={setTemperature}
@@ -445,6 +616,7 @@ export default function CaptureScreen({ navigation }: Props) {
 
           <EnvironmentField
             label="Humidity"
+            hint="Relative humidity"
             unit="%"
             value={humidity}
             onChangeText={setHumidity}
@@ -453,6 +625,7 @@ export default function CaptureScreen({ navigation }: Props) {
 
           <EnvironmentField
             label="Light intensity"
+            hint="Approximate brightness"
             unit="lux"
             value={lightIntensity}
             onChangeText={setLightIntensity}
@@ -461,6 +634,7 @@ export default function CaptureScreen({ navigation }: Props) {
 
           <EnvironmentField
             label="Soil moisture"
+            hint="Moisture percentage"
             unit="%"
             value={soilMoisture}
             onChangeText={setSoilMoisture}
@@ -483,7 +657,10 @@ export default function CaptureScreen({ navigation }: Props) {
         >
           {loading ? (
             <>
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator
+                color="#FFFFFF"
+                style={styles.submitLoader}
+              />
 
               <Text style={styles.submitText}>
                 Analyzing image...
@@ -513,6 +690,7 @@ export default function CaptureScreen({ navigation }: Props) {
 
 type EnvironmentFieldProps = {
   label: string;
+  hint: string;
   unit: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -521,6 +699,7 @@ type EnvironmentFieldProps = {
 
 function EnvironmentField({
   label,
+  hint,
   unit,
   value,
   onChangeText,
@@ -528,19 +707,32 @@ function EnvironmentField({
 }: EnvironmentFieldProps) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>
-        {label}
-      </Text>
+      <View style={styles.fieldHeader}>
+        <Text style={styles.label}>
+          {label}
+        </Text>
 
-      <View style={styles.inputRow}>
+        <Text style={styles.fieldUnit}>
+          {unit}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.inputRow,
+          !editable && styles.inputRowDisabled,
+        ]}
+      >
         <TextInput
           style={styles.input}
+          inputMode="decimal"
           keyboardType="decimal-pad"
           value={value}
           onChangeText={onChangeText}
           placeholder="0"
           placeholderTextColor="#9AB0A1"
           editable={editable}
+          selectTextOnFocus
           accessibilityLabel={label}
         />
 
@@ -548,6 +740,10 @@ function EnvironmentField({
           {unit}
         </Text>
       </View>
+
+      <Text style={styles.fieldHint}>
+        {hint}
+      </Text>
     </View>
   );
 }
@@ -561,14 +757,19 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 22,
-    paddingTop: 28,
-    paddingBottom: 30,
+    paddingTop: 27,
+    paddingBottom: 32,
   },
 
   headerRow: {
+    alignItems: "flex-start",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+  },
+
+  headerCopy: {
+    flex: 1,
+    paddingRight: 15,
   },
 
   eyebrow: {
@@ -585,9 +786,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  subtitle: {
+    color: "#658575",
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+
   stepBadge: {
-    borderRadius: 14,
     backgroundColor: "#DDF1E2",
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -598,27 +806,99 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  subtitle: {
-    color: "#658575",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 20,
+  progressCard: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#DCEBE0",
+    borderRadius: 15,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 13,
+  },
+
+  progressTopRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  progressText: {
+    color: "#527763",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  progressPercent: {
+    color: "#2D7A4B",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  progressTrack: {
+    backgroundColor: "#E5F0E8",
+    borderRadius: 5,
+    height: 7,
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    backgroundColor: "#2D7A4B",
+    borderRadius: 5,
+    height: "100%",
+  },
+
+  sectionHeader: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 9,
+    marginTop: 24,
+  },
+
+  sectionTitle: {
+    color: "#234A32",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  sectionHint: {
+    color: "#82998A",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+
+  removeText: {
+    color: "#B54848",
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 2,
+  },
+
+  requiredText: {
+    color: "#7C9A87",
+    fontSize: 11,
+    fontWeight: "800",
+    marginBottom: 2,
   },
 
   imagePicker: {
-    height: 242,
-    overflow: "hidden",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#A5D5B5",
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: "#A5D5B5",
-    alignItems: "center",
+    height: 242,
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+
+  imagePickerSelected: {
+    borderColor: "#69A77D",
   },
 
   imagePickerPressed: {
-    opacity: 0.82,
+    opacity: 0.84,
   },
 
   placeholder: {
@@ -627,13 +907,13 @@ const styles = StyleSheet.create({
   },
 
   cameraCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
     alignItems: "center",
-    justifyContent: "center",
     backgroundColor: "#DDF1E2",
+    borderRadius: 32,
+    height: 64,
+    justifyContent: "center",
     marginBottom: 13,
+    width: 64,
   },
 
   cameraIcon: {
@@ -653,23 +933,37 @@ const styles = StyleSheet.create({
     color: "#789687",
     fontSize: 12,
     lineHeight: 18,
-    textAlign: "center",
     marginTop: 6,
+    textAlign: "center",
+  },
+
+  chooseButton: {
+    backgroundColor: "#E7F4EA",
+    borderRadius: 11,
+    marginTop: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+
+  chooseButtonText: {
+    color: "#2D7A4B",
+    fontSize: 12,
+    fontWeight: "900",
   },
 
   image: {
-    width: "100%",
     height: "100%",
+    width: "100%",
   },
 
   imageOverlay: {
-    position: "absolute",
-    right: 12,
-    bottom: 12,
+    backgroundColor: "rgba(23, 60, 42, 0.84)",
     borderRadius: 12,
-    backgroundColor: "rgba(23, 60, 42, 0.82)",
+    bottom: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    position: "absolute",
+    right: 12,
   },
 
   changeImageText: {
@@ -678,14 +972,55 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  imageCheck: {
+    alignItems: "center",
+    backgroundColor: "#2D7A4B",
+    borderColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 2,
+    height: 32,
+    justifyContent: "center",
+    left: 12,
+    position: "absolute",
+    top: 12,
+    width: 32,
+  },
+
+  imageCheckText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+
   tipCard: {
+    alignItems: "flex-start",
     backgroundColor: "#FFFDF5",
     borderColor: "#F0E7C7",
     borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
+    flexDirection: "row",
     marginTop: 14,
-    marginBottom: 26,
+    padding: 14,
+  },
+
+  tipIcon: {
+    alignItems: "center",
+    backgroundColor: "#F5EBCB",
+    borderRadius: 11,
+    height: 23,
+    justifyContent: "center",
+    marginRight: 10,
+    width: 23,
+  },
+
+  tipIconText: {
+    color: "#B18B36",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  tipCopy: {
+    flex: 1,
   },
 
   tipLabel: {
@@ -702,25 +1037,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 7,
-  },
-
-  sectionTitle: {
-    color: "#234A32",
-    fontSize: 19,
-    fontWeight: "800",
-  },
-
-  requiredText: {
-    color: "#7C9A87",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
   fieldGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -728,31 +1044,49 @@ const styles = StyleSheet.create({
   },
 
   field: {
+    marginTop: 11,
     width: "48%",
-    marginTop: 10,
+  },
+
+  fieldHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 5,
   },
 
   label: {
     color: "#477D5C",
+    flex: 1,
     fontSize: 12,
     fontWeight: "800",
-    marginBottom: 5,
+  },
+
+  fieldUnit: {
+    color: "#83A08D",
+    fontSize: 10,
+    fontWeight: "800",
   },
 
   inputRow: {
-    height: 50,
-    flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderColor: "#D2E6D8",
     borderRadius: 13,
     borderWidth: 1,
+    flexDirection: "row",
+    height: 50,
     paddingHorizontal: 11,
   },
 
+  inputRowDisabled: {
+    backgroundColor: "#F0F5F1",
+    opacity: 0.75,
+  },
+
   input: {
-    flex: 1,
     color: "#1B4332",
+    flex: 1,
     fontSize: 16,
     paddingVertical: 0,
   },
@@ -764,22 +1098,29 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
 
+  fieldHint: {
+    color: "#91A99A",
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 4,
+  },
+
   submitButton: {
-    minHeight: 57,
     alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
     backgroundColor: "#2D7A4B",
     borderRadius: 17,
-    marginTop: 28,
     elevation: 3,
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 28,
+    minHeight: 57,
     shadowColor: "#185C35",
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
     shadowOffset: {
       width: 0,
       height: 4,
     },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
   },
 
   submitButtonDisabled: {
@@ -793,6 +1134,10 @@ const styles = StyleSheet.create({
         scale: 0.99,
       },
     ],
+  },
+
+  submitLoader: {
+    marginRight: 10,
   },
 
   submitText: {
@@ -812,7 +1157,7 @@ const styles = StyleSheet.create({
     color: "#8AA992",
     fontSize: 11,
     lineHeight: 16,
-    textAlign: "center",
     marginTop: 18,
+    textAlign: "center",
   },
 });
