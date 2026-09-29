@@ -870,6 +870,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     marginLeft: 10,
   },
+
   footerText: {
     color: "#8AA992",
     fontSize: 11,
