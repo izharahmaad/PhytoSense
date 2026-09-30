@@ -19,6 +19,9 @@ export type PredictionResponse = {
   recommendation: string;
 };
 
+export type PredictionResult =
+  PredictionResponse;
+
 export type HistoryItem = {
   id: number;
   created_at: string;
